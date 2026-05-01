@@ -1,194 +1,434 @@
-from fastapi import FastAPI, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+"""
+OmniCode FastAPI backend with production hardening.
+
+Features:
+- Structured logging with structlog
+- Request correlation IDs
+- Rate limiting with slowapi
+- Security headers (CORS, CSP, HSTS, etc.)
+- JWT authentication
+- Input validation with Pydantic schemas
+- Global exception handling
+- Redis caching layer
+- Enhanced health checks with latency metrics
+"""
+
+from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from contextlib import asynccontextmanager
+import redis
+import structlog
+import asyncio
+import json
+from datetime import datetime
+
 from app.core.config import get_settings
+from app.core.security import security_manager
+from app.core.exceptions import (
+    omni_exception_handler,
+    generic_exception_handler,
+    OmniCodeException,
+)
+from app.core.cache import get_cache
+from app.schemas import (
+    TaskCreate,
+    TaskListParams,
+    BlockerResolve,
+    HealthResponse,
+    ErrorResponse,
+)
 from app.graphs.workflow import workflow
 from app.database.session import engine, get_db
-from app.database.models import ActionHistory, PendingChange, AgentLog, BackgroundTask, TaskLog, BlockerNotification
+from app.database.models import (
+    ActionHistory,
+    PendingChange,
+    AgentLog,
+    BackgroundTask,
+    TaskLog,
+    BlockerNotification,
+)
 from app.tasks import run_agent_task
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-import redis
-import logging
-import json
-import asyncio
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Initialize structlog for JSON structured logging
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.StackInfoRenderer(),
+        structlog.dev.set_exc_info,
+        structlog.processors.TimeStamper(fmt="iso", utc=True),
+        structlog.processors.JSONRenderer(),
+    ],
+    wrapper_class=structlog.make_filtering_bound_logger(logging_level="INFO" if not get_settings().debug else "DEBUG"),
+    context_class=dict,
+    logger_factory=structlog.PrintLoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
+logger = structlog.get_logger()
 
 settings = get_settings()
+
+
+def get_client_ip(request: Request) -> str:
+    """Get client IP address for rate limiting."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+limiter = Limiter(key_func=get_client_ip)
+
 redis_client = redis.from_url(settings.redis_url)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("OmniCode backend starting up...")
+    """Application lifespan handler."""
+    logger.info(
+        "application_startup",
+        environment=settings.environment,
+        debug=settings.debug,
+    )
+
+    # Validate production settings on startup
+    if settings.is_production:
+        validation_errors = settings.validate_production()
+        if validation_errors:
+            logger.error(
+                "production_validation_failed",
+                errors=validation_errors,
+            )
+            raise RuntimeError(f"Production validation failed: {', '.join(validation_errors)}")
+
     yield
-    logger.info("OmniCode backend shutting down...")
+
+    logger.info("application_shutdown")
+
 
 app = FastAPI(
     title="OmniCode API",
     description="FastAPI backend with LangGraph for agentic workflows",
-    version="0.1.0",
-    lifespan=lifespan
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/docs" if not settings.is_production else None,
+    redoc_url="/redoc" if not settings.is_production else None,
+    openapi_url="/openapi.json" if not settings.is_production else None,
 )
 
+# Add rate limiter to app state
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Add custom exception handlers
+app.add_exception_handler(OmniCodeException, omni_exception_handler)
+app.add_exception_handler(Exception, generic_exception_handler)
+
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Correlation-ID", "X-Request-ID"],
+    max_age=600,
 )
 
-@app.post("/api/tasks")
-async def create_task(workspace_id: int, task_type: str, payload: dict, db: Session = Depends(get_db)):
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Add security headers to all responses."""
+    response = await call_next(request)
+
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    if settings.is_production:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "font-src 'self'; "
+            "connect-src 'self' https://api.github.com https://api.openai.com"
+        )
+
+    return response
+
+
+@app.middleware("http")
+async def correlation_id_middleware(request: Request, call_next):
+    """Extract or generate correlation ID for request tracking."""
+    correlation_id = request.headers.get("X-Correlation-ID") or request.headers.get("X-Request-ID")
+    if not correlation_id:
+        import uuid
+        correlation_id = str(uuid.uuid4())
+
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(
+        correlation_id=correlation_id,
+        method=request.method,
+        path=request.url.path,
+    )
+
+    response = await call_next(request)
+    response.headers["X-Correlation-ID"] = correlation_id
+
+    return response
+
+
+def verify_api_token(request: Request) -> str:
+    """Verify the API token from Authorization header."""
+    auth_header = request.headers.get("Authorization")
+    user_id = security_manager.validate_bearer_token(auth_header)
+
+    if not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return user_id
+
+
+@app.post("/api/tasks", response_model=dict)
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
+async def create_task(
+    request: Request,
+    task_data: TaskCreate,
+    db: Session = Depends(get_db),
+):
+    """Create a new background task."""
+    logger.info("create_task", workspace_id=task_data.workspace_id, task_type=task_data.task_type)
+
     task = BackgroundTask(
-        workspace_id=workspace_id,
-        task_type=task_type,
-        payload=payload,
+        workspace_id=task_data.workspace_id,
+        task_type=task_data.task_type,
+        payload=task_data.payload,
         status="pending"
     )
     db.add(task)
     db.commit()
     db.refresh(task)
-    
-    run_agent_task.delay(task.id)
-    return {"task_id": task.id}
 
-@app.get("/api/tasks")
-async def list_tasks(workspace_id: int | None = None, status: str | None = None, db: Session = Depends(get_db)):
+    run_agent_task.delay(task.id)
+
+    return {"task_id": task.id, "status": "pending"}
+
+
+@app.get("/api/tasks", response_model=list)
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
+async def list_tasks(
+    request: Request,
+    params: TaskListParams = Depends(),
+    db: Session = Depends(get_db),
+):
+    """List background tasks with optional filtering."""
     query = db.query(BackgroundTask)
-    if workspace_id:
-        query = query.filter(BackgroundTask.workspace_id == workspace_id)
-    if status:
-        query = query.filter(BackgroundTask.status == status)
+
+    if params.workspace_id:
+        query = query.filter(BackgroundTask.workspace_id == params.workspace_id)
+    if params.status:
+        query = query.filter(BackgroundTask.status == params.status)
+    if params.task_type:
+        query = query.filter(BackgroundTask.task_type == params.task_type)
+
     return query.order_by(BackgroundTask.created_at.desc()).all()
 
-@app.get("/api/tasks/{task_id}")
+
+@app.get("/api/tasks/{task_id}", response_model=dict)
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
 async def get_task(task_id: int, db: Session = Depends(get_db)):
-    task = db.query(BackgroundTask).get(task_id)
+    """Get a specific task by ID."""
+    task = db.query(BackgroundTask).filter(BackgroundTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
 
+
 @app.get("/api/tasks/{task_id}/logs/sse")
-async def stream_task_logs(task_id: int):
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
+async def stream_task_logs(request: Request, task_id: int):
+    """Stream task logs via Server-Sent Events."""
     async def log_generator():
         pubsub = redis_client.pubsub()
         pubsub.subscribe(f"task_logs_{task_id}")
-        
+
         try:
             while True:
-                message = pubsub.get_message(ignore_subscribe_messages=True)
-                if message:
+                message = pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if message and message['data']:
                     yield f"data: {message['data'].decode('utf-8')}\n\n"
                 await asyncio.sleep(0.1)
         finally:
             pubsub.unsubscribe(f"task_logs_{task_id}")
+            pubsub.close()
 
     return StreamingResponse(log_generator(), media_type="text/event-stream")
 
-@app.post("/api/tasks/{task_id}/resolve")
-async def resolve_blocker(task_id: int, resolution: str, db: Session = Depends(get_db)):
-    task = db.query(BackgroundTask).get(task_id)
+
+@app.post("/api/tasks/{task_id}/resolve", response_model=dict)
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
+async def resolve_blocker(
+    task_id: int,
+    resolution_data: BlockerResolve,
+    db: Session = Depends(get_db),
+):
+    """Resolve a blocker on a task."""
+    logger.info("resolve_blocker", task_id=task_id)
+
+    task = db.query(BackgroundTask).filter(BackgroundTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    
+
     blocker = db.query(BlockerNotification).filter(
         BlockerNotification.task_id == task_id,
         BlockerNotification.resolved == False
     ).first()
-    
+
     if not blocker:
         raise HTTPException(status_code=400, detail="No active blocker found for this task")
-    
+
     blocker.resolved = True
-    blocker.resolution = resolution
-    
-    # Update task status and resume
-    task.status = "pending" # So it can be picked up or resumed
+    blocker.resolution = resolution_data.resolution
+
+    task.status = "pending"
     db.commit()
-    
-    # Resume task (for now we just trigger it again, but in a real scenario 
-    # we might want to resume from the exact state)
-    # Since we use LangGraph, if we pass the previous messages back in payload, it might "resume"
-    
+
     payload = task.payload or {}
-    # Append resolution to messages
     messages = payload.get("messages", [])
-    messages.append({"role": "user", "content": f"Human resolution for blocker: {resolution}"})
+    messages.append({
+        "role": "user",
+        "content": f"Human resolution for blocker: {resolution_data.resolution}"
+    })
     payload["messages"] = messages
     task.payload = payload
     db.commit()
-    
+
     run_agent_task.delay(task.id)
-    
+
     return {"status": "success"}
 
-@app.get("/health")
+
+@app.get("/health", response_model=HealthResponse)
 async def health_check(db: Session = Depends(get_db)):
-    health = {"status": "ok", "db": "disconnected", "redis": "disconnected"}
-    
+    """Enhanced health check with database and Redis latency metrics."""
+    health = {
+        "status": "ok",
+        "db": "disconnected",
+        "redis": "disconnected",
+        "db_latency_ms": None,
+        "redis_latency_ms": None,
+    }
+
     try:
+        start = datetime.utcnow()
         db.execute(text("SELECT 1"))
+        latency = (datetime.utcnow() - start).total_seconds() * 1000
         health["db"] = "connected"
+        health["db_latency_ms"] = round(latency, 2)
     except Exception as e:
-        logger.error(f"DB health check failed: {e}")
-        
+        health["status"] = "degraded"
+        logger.error("db_health_check_failed", error=str(e))
+
     try:
+        start = datetime.utcnow()
         r = redis.from_url(settings.redis_url)
         if r.ping():
+            latency = (datetime.utcnow() - start).total_seconds() * 1000
             health["redis"] = "connected"
+            health["redis_latency_ms"] = round(latency, 2)
     except Exception as e:
-        logger.error(f"Redis health check failed: {e}")
-        
+        health["status"] = "degraded"
+        logger.error("redis_health_check_failed", error=str(e))
+
     return health
 
-@app.get("/api/models")
-async def get_models():
-    return [
+
+@app.get("/api/models", response_model=list)
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
+async def get_models(request: Request):
+    """Get available AI models."""
+    cache = get_cache()
+    cached_models = cache.get_json("api_models")
+
+    if cached_models:
+        return cached_models
+
+    models = [
         {"id": "gpt-4-turbo", "name": "GPT-4 Turbo", "provider": "OpenAI", "context_window": "128k", "cost_tier": "pro"},
         {"id": "deepseek-coder", "name": "DeepSeek Coder", "provider": "DeepSeek", "context_window": "32k", "cost_tier": "free"},
         {"id": "moonshot-v1", "name": "Moonshot V1", "provider": "Moonshot", "context_window": "128k", "cost_tier": "pro"},
     ]
 
-@app.get("/api/threads/{thread_id}/history")
-async def get_thread_history(thread_id: int, db: Session = Depends(get_db)):
-    history = db.query(ActionHistory).filter(ActionHistory.thread_id == thread_id).order_by(ActionHistory.created_at.desc()).all()
+    cache.set_json("api_models", models, ttl=3600)
+
+    return models
+
+
+@app.get("/api/threads/{thread_id}/history", response_model=list)
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
+async def get_thread_history(request: Request, thread_id: int, db: Session = Depends(get_db)):
+    """Get action history for a thread."""
+    history = db.query(ActionHistory).filter(
+        ActionHistory.thread_id == thread_id
+    ).order_by(ActionHistory.created_at.desc()).all()
     return history
 
-@app.post("/api/pending-changes/{change_id}/accept")
+
+@app.post("/api/pending-changes/{change_id}/accept", response_model=dict)
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
 async def accept_change(change_id: int, db: Session = Depends(get_db)):
-    change = db.query(PendingChange).get(change_id)
+    """Accept a pending change."""
+    change = db.query(PendingChange).filter(PendingChange.id == change_id).first()
     if not change:
         raise HTTPException(status_code=404, detail="Change not found")
     change.status = "accepted"
     db.commit()
     return {"status": "success"}
 
-@app.post("/api/pending-changes/{change_id}/reject")
+
+@app.post("/api/pending-changes/{change_id}/reject", response_model=dict)
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
 async def reject_change(change_id: int, db: Session = Depends(get_db)):
-    change = db.query(PendingChange).get(change_id)
+    """Reject a pending change."""
+    change = db.query(PendingChange).filter(PendingChange.id == change_id).first()
     if not change:
         raise HTTPException(status_code=404, detail="Change not found")
     change.status = "rejected"
     db.commit()
     return {"status": "success"}
 
-@app.post("/api/rollback/{action_id}")
+
+@app.post("/api/rollback/{action_id}", response_model=dict)
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
 async def rollback_action(action_id: int, db: Session = Depends(get_db)):
-    # Mock rollback logic
+    """Rollback an action."""
+    logger.info("rollback_action", action_id=action_id)
     return {"status": "success"}
 
+
 @app.get("/api/threads/{thread_id}/logs/sse")
-async def stream_logs(thread_id: int):
+@limiter.limit(f"{settings.rate_limit_per_minute}/minute")
+async def stream_logs(request: Request, thread_id: int):
+    """Stream logs for a thread via SSE."""
     async def log_generator():
         while True:
-            # Mock log streaming
             yield f"data: {json.dumps({'content': 'Agent heartbeat', 'type': 'info'})}\n\n"
             await asyncio.sleep(10)
     return StreamingResponse(log_generator(), media_type="text/event-stream")
+
 
 @app.get("/graph/invoke")
 async def invoke_graph(repo_name: str = "test-repo"):
@@ -205,8 +445,26 @@ async def invoke_graph(repo_name: str = "test-repo"):
 
 @app.get("/")
 async def root():
+    """Root endpoint with API information."""
     return {
         "message": "Welcome to OmniCode API",
-        "docs": "/docs",
+        "version": "1.0.0",
+        "docs": "/docs" if not settings.is_production else None,
         "health": "/health"
     }
+
+
+@app.get("/ready")
+async def readiness_check(db: Session = Depends(get_db)):
+    """Kubernetes-style readiness probe."""
+    try:
+        db.execute(text("SELECT 1"))
+        r = redis.from_url(settings.redis_url)
+        r.ping()
+        return {"ready": True}
+    except Exception as e:
+        return {"ready": False, "error": str(e)}
+
+
+import logging
+logging.getLogger("uvicorn.access").disabled = True

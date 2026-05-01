@@ -5,6 +5,7 @@ node_modules/
 
 # Testing
 coverage/
+.nyc_output/
 
 # Next.js
 .next/
@@ -13,6 +14,7 @@ build/
 
 # Production
 dist/
+*.egg-info/
 
 # Misc
 .DS_Store
@@ -41,6 +43,14 @@ __pycache__/
 .venv/
 venv/
 ENV/
+.env
+
+# Pytest
+.pytest_cache/
+.tox/
+
+# Railway
+railway.log
 
 # IDE
 .idea/
@@ -57,3 +67,13 @@ ENV/
 
 # LangGraph
 .checkpoints/
+
+# Celery
+celerybeat-schedule
+
+# Redis
+dump.rdb
+
+# Logs
+*.log
+logs/
