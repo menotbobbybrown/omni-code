@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
     github_client_id: str = ""
     github_client_secret: str = ""
+    github_token: str = ""
+    openai_api_key: str = ""
     
     cors_origins: list[str] = ["http://localhost:3000"]
 

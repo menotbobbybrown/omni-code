@@ -1,27 +1,21 @@
 from langgraph.graph import StateGraph, START, END
 from .state import AgentState
-from .nodes import analyze_repo, fetch_repo_info, should_continue
-
+from .nodes import call_model, execute_tools, should_continue
 
 def create_workflow():
     """Create and compile the LangGraph workflow."""
     graph = StateGraph(AgentState)
     
-    graph.add_node("analyze", analyze_repo)
-    graph.add_node("fetch", fetch_repo_info)
+    graph.add_node("agent", call_model)
+    graph.add_node("tools", execute_tools)
     
-    graph.add_edge(START, "fetch")
+    graph.add_edge(START, "agent")
     graph.add_conditional_edges(
-        "fetch",
+        "agent",
         should_continue,
-        {
-            "analyze": "analyze",
-            END: END
-        }
     )
-    graph.add_edge("analyze", END)
+    graph.add_edge("tools", "agent")
     
     return graph.compile()
-
 
 workflow = create_workflow()
