@@ -7,3 +7,5 @@ class AgentState(TypedDict):
     current_repo: str | None
     analysis_result: str | None
     github_token: str | None
+    thread_id: int | None
+    workspace_id: int | None
