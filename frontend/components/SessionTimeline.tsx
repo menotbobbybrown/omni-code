@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
 import { toast } from 'sonner';
+import { getThreadHistory, rollbackAction } from '@/lib/api';
 
 interface Action {
   id: number;
@@ -18,11 +19,8 @@ export default function SessionTimeline({ threadId }: { threadId: number }) {
 
   const fetchHistory = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/threads/${threadId}/history`);
-      if (res.ok) {
-        const data = await res.json();
-        setHistory(data);
-      }
+      const data = await getThreadHistory(threadId);
+      setHistory(data);
     } catch (e) {
       console.error(e);
     }
@@ -35,13 +33,11 @@ export default function SessionTimeline({ threadId }: { threadId: number }) {
   }, [threadId]);
 
   const handleRollback = async (actionId: number) => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/rollback/${actionId}`, {
-      method: 'POST',
-    });
-    if (res.ok) {
+    try {
+      await rollbackAction(actionId);
       toast.success('Rolled back successfully');
       fetchHistory();
-    } else {
+    } catch {
       toast.error('Rollback failed');
     }
   };
