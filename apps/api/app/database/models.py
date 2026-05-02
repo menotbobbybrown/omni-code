@@ -88,11 +88,23 @@ class CodeChunk(Base):
     id = Column(Integer, primary_key=True)
     workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True)
     file_path = Column(String, index=True)
+    name = Column(String, index=True)  # Function/class name
+    chunk_type = Column(String, default="module")  # function, class, module
     content = Column(Text)
+    signature = Column(Text, nullable=True)  # Function/class signature
+    imports = Column(JSON, default=list)  # List of imports
+    start_line = Column(Integer, nullable=True)
+    end_line = Column(Integer, nullable=True)
     embedding = Column(Vector(1536))
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     workspace = relationship("Workspace", back_populates="code_chunks")
+
+    __table_args__ = (
+        Index("ix_code_chunks_workspace_file", "workspace_id", "file_path"),
+        Index("ix_code_chunks_workspace_chunk_type", "workspace_id", "chunk_type"),
+    )
 
 
 class WorkspaceMemory(Base):
