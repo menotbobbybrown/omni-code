@@ -3,6 +3,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ScrollArea } from './ui/scroll-area';
 
+import { client } from '@/lib/api';
+
 interface LogEntry {
   id: number;
   content: string;
@@ -14,18 +16,19 @@ export default function AgentLogsPanel({ threadId, taskId }: { threadId?: number
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const url = taskId 
-      ? `${process.env.NEXT_PUBLIC_API_URL}/api/tasks/${taskId}/logs/sse`
-      : `${process.env.NEXT_PUBLIC_API_URL}/api/threads/${threadId}/logs/sse`;
+    let stopStream: (() => void) | undefined;
     
-    const eventSource = new EventSource(url);
-    
-    eventSource.onmessage = (event) => {
-      const newLog = JSON.parse(event.data);
-      setLogs((prev) => [...prev, newLog]);
-    };
+    if (taskId) {
+      stopStream = client.tasks.streamLogs(taskId, (newLog) => {
+        setLogs((prev) => [...prev, newLog]);
+      });
+    } else if (threadId) {
+      stopStream = client.threads.streamLogs(threadId, (newLog) => {
+        setLogs((prev) => [...prev, newLog]);
+      });
+    }
 
-    return () => eventSource.close();
+    return () => stopStream?.();
   }, [threadId, taskId]);
 
   useEffect(() => {

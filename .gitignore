@@ -74,6 +74,9 @@ celerybeat-schedule
 # Redis
 dump.rdb
 
+# Turbo
+.turbo/
+
 # Logs
 *.log
 logs/
