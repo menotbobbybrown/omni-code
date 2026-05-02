@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Any
-from ..database.session import get_db
+from ..database.session import get_async_db
 from .engine import OrchestratorEngine
 from ..schemas.orchestrator import OrchestratorRequest, OrchestratorResponse, TaskGraph
 import structlog
@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/orchestrator", tags=["orchestrator"])
 @router.post("/run", response_model=OrchestratorResponse)
 async def run_orchestrator(
     request_data: OrchestratorRequest,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
     Start a new orchestration workflow.
@@ -27,14 +27,73 @@ async def run_orchestrator(
         status=graph.status
     )
 
+@router.post("/preview", response_model=TaskGraph)
+async def preview_orchestrator(
+    request_data: OrchestratorRequest,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Preview the decomposition of a prompt.
+    """
+    logger.info("orchestrator_preview_request", workspace_id=request_data.workspace_id)
+    
+    engine = OrchestratorEngine(db_session=db)
+    context = {"workspace_id": request_data.workspace_id}
+    graph = await engine.decomposer.decompose(request_data.prompt, context)
+    
+    # Add dummy timestamps for the schema
+    graph_dict = graph.dict()
+    graph_dict["created_at"] = datetime.utcnow().isoformat()
+    graph_dict["updated_at"] = datetime.utcnow().isoformat()
+    
+    return graph_dict
+
+from ..database.models import TaskGraphModel, SubTaskModel
+from sqlalchemy import select
+
 @router.get("/{graph_id}", response_model=TaskGraph)
-async def get_graph_status(graph_id: str):
+async def get_graph_status(
+    graph_id: str,
+    db: AsyncSession = Depends(get_async_db)
+):
     """
     Get the status of a specific task graph.
     """
-    # In a real implementation, this would fetch from DB
-    # For now, it might be in engine.running_graphs
-    return None
+    result = await db.execute(select(TaskGraphModel).where(TaskGraphModel.id == graph_id))
+    db_graph = result.scalar_one_or_none()
+    
+    if not db_graph:
+        raise HTTPException(status_code=404, detail="Graph not found")
+        
+    result = await db.execute(select(SubTaskModel).where(SubTaskModel.graph_id == graph_id))
+    db_subtasks = result.scalars().all()
+    
+    subtasks = [
+        SubTask(
+            id=st.id,
+            title=st.title,
+            description=st.description,
+            agent_type=st.agent_type,
+            status=st.status,
+            dependencies=st.dependencies,
+            input_data=st.input_data,
+            output_data=st.output_data,
+            cost=st.cost,
+            tokens_used=st.tokens_used,
+            retry_count=st.retry_count,
+            max_retries=st.max_retries,
+            completed_at=st.completed_at.isoformat() if st.completed_at else None
+        ) for st in db_subtasks
+    ]
+    
+    return TaskGraph(
+        id=db_graph.id,
+        goal=db_graph.goal,
+        subtasks=subtasks,
+        status=db_graph.status,
+        created_at=db_graph.created_at.isoformat(),
+        updated_at=db_graph.updated_at.isoformat()
+    )
 
 from fastapi.responses import StreamingResponse
 import asyncio

@@ -14,12 +14,16 @@ class SubTask(BaseModel):
     title: str
     description: str
     agent_type: str  # backend, frontend, devops, etc.
+    model_id: Optional[str] = None
     dependencies: List[str] = Field(default_factory=list)
     status: TaskStatus = TaskStatus.PENDING
     input_data: Dict[str, Any] = Field(default_factory=dict)
     output_data: Optional[Dict[str, Any]] = None
+    cost: Optional[Dict[str, Any]] = None
+    tokens_used: int = 0
     retry_count: int = 0
     max_retries: int = 3
+    completed_at: Optional[str] = None
 
 class TaskGraph(BaseModel):
     id: str

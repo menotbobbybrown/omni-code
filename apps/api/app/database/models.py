@@ -1,10 +1,27 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Boolean, Index
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Boolean, Index, LargeBinary
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
 import datetime
+import zlib
+import json
+from sqlalchemy import TypeDecorator
 
 Base = declarative_base()
+
+
+class CompressedJSON(TypeDecorator):
+    impl = LargeBinary
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            return zlib.compress(json.dumps(value).encode('utf-8'))
+        return None
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            return json.loads(zlib.decompress(value).decode('utf-8'))
+        return None
 
 
 class User(Base):
@@ -253,13 +270,17 @@ class SubTaskModel(Base):
     title = Column(String)
     description = Column(Text)
     agent_type = Column(String)
+    model_id = Column(String, nullable=True)
     status = Column(String, index=True)
     dependencies = Column(JSON)  # List of subtask IDs
     input_data = Column(JSON)
     output_data = Column(JSON, nullable=True)
+    cost = Column(JSON, nullable=True)  # {amount: float, currency: str}
+    tokens_used = Column(Integer, default=0)
     retry_count = Column(Integer, default=0)
     max_retries = Column(Integer, default=3)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
 
     graph = relationship("TaskGraphModel", back_populates="subtasks")
 
@@ -269,7 +290,7 @@ class TaskCheckpointModel(Base):
     id = Column(Integer, primary_key=True)
     graph_id = Column(String, ForeignKey("task_graphs.id"), index=True)
     checkpoint_number = Column(Integer)
-    state_snapshot = Column(JSON)
+    state_snapshot = Column(CompressedJSON)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     graph = relationship("TaskGraphModel", back_populates="checkpoints")

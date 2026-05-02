@@ -25,14 +25,23 @@ class RedisCache:
         self._client: Optional[redis.Redis] = None
 
     @property
-    def client(self) -> redis.Redis:
+    def client(self) -> Union[redis.Redis, Any]:
         if self._client is None:
-            self._client = redis.from_url(
-                self._redis_url,
-                decode_responses=True,
-                socket_connect_timeout=5,
-                socket_timeout=5,
-            )
+            if settings.redis_cluster:
+                from redis.cluster import RedisCluster
+                self._client = RedisCluster.from_url(
+                    self._redis_url,
+                    decode_responses=True,
+                    socket_connect_timeout=5,
+                    socket_timeout=5,
+                )
+            else:
+                self._client = redis.from_url(
+                    self._redis_url,
+                    decode_responses=True,
+                    socket_connect_timeout=5,
+                    socket_timeout=5,
+                )
         return self._client
 
     def get(self, key: str) -> Optional[str]:
