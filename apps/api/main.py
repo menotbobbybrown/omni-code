@@ -60,6 +60,7 @@ from app.database.models import (
     BlockerNotification,
 )
 from app.tasks import run_agent_task
+from app.orchestrator.router import router as orchestrator_router
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
@@ -138,6 +139,9 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Add custom exception handlers
 app.add_exception_handler(OmniCodeException, omni_exception_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
+
+# Include Orchestrator Router
+app.include_router(orchestrator_router)
 
 # CORS middleware
 app.add_middleware(
