@@ -231,3 +231,55 @@ class Skill(Base):
         Index("ix_skills_workspace_global", "workspace_id", "is_global"),
         Index("ix_skills_name_workspace", "name", "workspace_id"),
     )
+
+
+class TaskGraphModel(Base):
+    __tablename__ = "task_graphs"
+    id = Column(String, primary_key=True)
+    goal = Column(Text)
+    status = Column(String, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    subtasks = relationship("SubTaskModel", back_populates="graph", cascade="all, delete-orphan")
+    checkpoints = relationship("TaskCheckpointModel", back_populates="graph", cascade="all, delete-orphan")
+
+
+class SubTaskModel(Base):
+    __tablename__ = "sub_tasks"
+    id = Column(String, primary_key=True)
+    graph_id = Column(String, ForeignKey("task_graphs.id"), index=True)
+    title = Column(String)
+    description = Column(Text)
+    agent_type = Column(String)
+    status = Column(String, index=True)
+    dependencies = Column(JSON)  # List of subtask IDs
+    input_data = Column(JSON)
+    output_data = Column(JSON, nullable=True)
+    retry_count = Column(Integer, default=0)
+    max_retries = Column(Integer, default=3)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    graph = relationship("TaskGraphModel", back_populates="subtasks")
+
+
+class TaskCheckpointModel(Base):
+    __tablename__ = "task_checkpoints"
+    id = Column(Integer, primary_key=True)
+    graph_id = Column(String, ForeignKey("task_graphs.id"), index=True)
+    checkpoint_number = Column(Integer)
+    state_snapshot = Column(JSON)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    graph = relationship("TaskGraphModel", back_populates="checkpoints")
+
+
+class AgentSessionModel(Base):
+    __tablename__ = "agent_sessions"
+    id = Column(String, primary_key=True)
+    agent_type = Column(String)
+    task_id = Column(String, index=True)
+    status = Column(String, index=True)
+    last_heartbeat = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
