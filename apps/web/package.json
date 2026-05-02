@@ -1,5 +1,5 @@
 {
-  "name": "omnicode-frontend",
+  "name": "@omnicode/web",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -22,6 +22,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
     "axios": "^1.6.8",
+    "@omnicode/sdk": "*",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
