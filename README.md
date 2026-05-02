@@ -1,7 +1,5 @@
 # OmniCode
 
-[![Backend CI](https://github.com/yourusername/omnicode/actions/workflows/backend.yml/badge.svg)](https://github.com/yourusername/omnicode/actions/workflows/backend.yml)
-[![Frontend CI](https://github.com/yourusername/omnicode/actions/workflows/frontend.yml/badge.svg)](https://github.com/yourusername/omnicode/actions/workflows/frontend.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/yourusername/omnicode/releases)
 
