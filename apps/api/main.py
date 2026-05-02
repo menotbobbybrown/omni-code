@@ -95,7 +95,7 @@ def get_client_ip(request: Request) -> str:
 
 limiter = Limiter(key_func=get_client_ip)
 
-redis_client = redis.from_url(settings.redis_url)
+redis_client = get_cache().client
 
 
 @asynccontextmanager
@@ -116,6 +116,32 @@ async def lifespan(app: FastAPI):
                 errors=validation_errors,
             )
             raise RuntimeError(f"Production validation failed: {', '.join(validation_errors)}")
+
+    # Orchestrator recovery and cleanup
+    from app.orchestrator.engine import OrchestratorEngine
+    from app.database.session import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as db:
+            orchestrator_engine = OrchestratorEngine(db_session=db, redis_client=get_cache().client)
+            await orchestrator_engine.recover_running_graphs()
+            logger.info("orchestrator_recovery_completed")
+    except Exception as e:
+        logger.error("orchestrator_recovery_failed", error=str(e))
+
+    # Start periodic cleanup
+    async def periodic_cleanup():
+        while True:
+            await asyncio.sleep(86400)  # Once a day
+            try:
+                async with AsyncSessionLocal() as db:
+                    engine = OrchestratorEngine(db_session=db, redis_client=get_cache().client)
+                    await engine.cleanup_completed_tasks()
+                    logger.info("periodic_cleanup_completed")
+            except Exception as e:
+                logger.error("periodic_cleanup_failed", error=str(e))
+
+    asyncio.create_task(periodic_cleanup())
 
     yield
 

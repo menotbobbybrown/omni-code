@@ -85,6 +85,15 @@ class TaskDecomposer:
                 status=TaskStatus.PENDING
             )
         ]
+
+        for st in subtasks:
+            # Route model for each task
+            model_info = self.model_router.route(
+                complexity=0.5, 
+                context_size=1000, 
+                priority=ModelCapability.SPEED if st.agent_type == 'frontend' else ModelCapability.REASONING
+            )
+            st.model_id = model_info.id
         
         graph = TaskGraph(
             id=str(uuid.uuid4()),

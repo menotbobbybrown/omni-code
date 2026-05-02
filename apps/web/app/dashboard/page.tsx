@@ -3,11 +3,15 @@
 import React, { useEffect, useState } from 'react';
 import TaskCard from '@/components/TaskCard';
 import BlockerResolutionModal from '@/components/BlockerResolutionModal';
+import { TaskCreationModal } from '@/components/TaskCreationModal';
+import { Button } from '@/components/ui/button';
+import { Plus, Sparkles } from 'lucide-react';
 
 export default function DashboardPage() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const fetchTasks = async () => {
     try {
@@ -41,7 +45,13 @@ export default function DashboardPage() {
 
   return (
     <div className="container mx-auto py-8">
-      <h1 className="mb-8 text-3xl font-bold">Agent Task Dashboard</h1>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold">Agent Task Dashboard</h1>
+        <Button onClick={() => setIsCreateModalOpen(true)} className="gap-2">
+          <Sparkles className="w-4 h-4" />
+          New Orchestrated Task
+        </Button>
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {tasks.map((task) => (
@@ -63,6 +73,12 @@ export default function DashboardPage() {
           onResolve={handleResolveSubmit}
         />
       )}
+
+      <TaskCreationModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        workspaceId={1} // Default workspace for now
+      />
     </div>
   );
 }

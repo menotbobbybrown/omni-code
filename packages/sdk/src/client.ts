@@ -190,6 +190,61 @@ export class OmniCodeClient {
     },
   };
 
+  orchestrator = {
+    run: async (prompt: string, workspaceId: number): Promise<{ graph_id: string; status: string }> => {
+      const response = await this.client.post('/api/orchestrator/run', { prompt, workspace_id: workspaceId });
+      return response.data;
+    },
+    preview: async (prompt: string, workspaceId: number): Promise<any> => {
+      const response = await this.client.post('/api/orchestrator/preview', { prompt, workspace_id: workspaceId });
+      return response.data;
+    },
+    getGraph: async (graphId: string): Promise<any> => {
+      const response = await this.client.get(`/api/orchestrator/${graphId}`);
+      return response.data;
+    },
+    streamGraphLogs: (graphId: string, onLog: (log: any) => void) => {
+      const url = `${this.baseUrl}/api/orchestrator/${graphId}/stream`;
+      const abortController = new AbortController();
+      
+      (async () => {
+        try {
+          const response = await fetch(url, {
+            headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
+            signal: abortController.signal,
+          });
+
+          if (!response.body) return;
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          const parser = createParser({
+            onEvent: (event) => {
+              try {
+                const data = JSON.parse(event.data);
+                onLog(data);
+              } catch (e) {
+                onLog(event.data);
+              }
+            }
+          });
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            parser.feed(decoder.decode(value));
+          }
+        } catch (error) {
+          if ((error as Error).name !== 'AbortError') {
+            console.error('Streaming error:', error);
+          }
+        }
+      })();
+
+      return () => abortController.abort();
+    },
+  };
+
   rollback = async (actionId: number): Promise<any> => {
     const response = await this.client.post(`/api/rollback/${actionId}`);
     return response.data;

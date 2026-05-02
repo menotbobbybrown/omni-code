@@ -92,4 +92,20 @@ export async function analyzeWorkspace(workspaceId: number) {
   return client.workspaces.analyze(workspaceId)
 }
 
+export async function runOrchestrator(prompt: string, workspaceId: number) {
+  return client.orchestrator.run(prompt, workspaceId)
+}
+
+export async function previewOrchestrator(prompt: string, workspaceId: number) {
+  return client.orchestrator.preview(prompt, workspaceId)
+}
+
+export async function getGraph(graphId: string) {
+  return client.orchestrator.getGraph(graphId)
+}
+
+export function streamGraphLogs(graphId: string, onLog: (log: any) => void) {
+  return client.orchestrator.streamGraphLogs(graphId, onLog)
+}
+
 export default client;

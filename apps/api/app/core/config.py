@@ -35,6 +35,7 @@ class Settings(BaseSettings):
 
     # Redis
     redis_url: str = Field(default="redis://localhost:6379")
+    redis_cluster: bool = Field(default=False)
 
     # GitHub OAuth (required in production)
     github_client_id: str = Field(default="")
