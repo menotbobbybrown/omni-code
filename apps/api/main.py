@@ -154,10 +154,10 @@ async def recover_interrupted_tasks():
     try:
         from app.orchestrator.engine import OrchestratorEngine
         
-        db = SessionLocal()
-        engine = OrchestratorEngine(db_session=db, redis_client=app.state.redis)
-        await engine.recover_running_graphs()
-        db.close()
+        async with AsyncSessionLocal() as db:
+            engine = OrchestratorEngine(db_session=db, redis_client=app.state.redis)
+            await engine.recover_running_graphs()
+        
         logger.info("task_recovery_complete")
     except Exception as e:
         logger.error("task_recovery_failed", error=str(e))
@@ -879,26 +879,27 @@ async def run_orchestrator(data: dict):
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
     
-    db = SessionLocal()
-    try:
-        engine = OrchestratorEngine(
-            db_session=db,
-            redis_client=app.state.redis
-        )
-        
-        graph = await engine.execute_workflow(
-            prompt=prompt,
-            workspace_id=workspace_id,
-            prefer_local=data.get("prefer_local", False)
-        )
-        
-        return {
-            "graph_id": graph.id,
-            "status": graph.status.value,
-            "subtasks_count": len(graph.subtasks)
-        }
-    finally:
-        db.close()
+    async with AsyncSessionLocal() as db:
+        try:
+            engine = OrchestratorEngine(
+                db_session=db,
+                redis_client=app.state.redis
+            )
+            
+            graph = await engine.execute_workflow(
+                prompt=prompt,
+                workspace_id=workspace_id,
+                prefer_local=data.get("prefer_local", False)
+            )
+            
+            return {
+                "graph_id": graph.id,
+                "status": graph.status.value,
+                "subtasks_count": len(graph.subtasks)
+            }
+        except Exception as e:
+            logger.error("orchestrator_run_failed", error=str(e))
+            raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/orchestrator/preview")

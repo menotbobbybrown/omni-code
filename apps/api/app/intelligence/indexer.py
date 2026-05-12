@@ -617,7 +617,7 @@ class CodebaseIndexer:
             ).filter(
                 CodeChunk.workspace_id == workspace_id
             ).order_by(
-                desc('distance')  # Larger distance = more similar (postgresql uses cosine_distance)
+                'distance'  # Smaller distance = more similar
             ).limit(limit).all()
             
             return [

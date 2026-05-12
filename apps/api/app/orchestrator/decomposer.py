@@ -190,13 +190,14 @@ determine which tasks depend on others and can run in parallel.
 Return ONLY valid JSON:
 {
   "dependencies": {
-    "task_index_0": ["task_index_1", "task_index_2"],
-    "task_index_1": [],
+    "0": [1, 2],
+    "1": [],
     ...
   },
   "parallel_groups": [[0, 1], [2], [3, 4]],
   "estimated_duration_minutes": number
 }
+"0": [1, 2] means task index 0 depends on task index 1 and 2 being completed first.
 Each task has an index matching its position in the input array.
 JSON ONLY."""
 
@@ -216,20 +217,24 @@ JSON ONLY."""
         subtasks = []
         dependencies = deps_analysis.get("dependencies", {})
         
+        # Pre-generate IDs so we can map them
+        task_ids = [f"task_{uuid.uuid4().hex[:8]}" for _ in range(len(task_specs))]
+        
         for i, spec in enumerate(task_specs):
-            task_id = f"task_{uuid.uuid4().hex[:8]}"
+            task_id = task_ids[i]
             
-            # Convert dependency indices to task IDs
-            task_deps = [
-                f"task_{uuid.uuid4().hex[:8]}"  # Placeholder - will be corrected
-            ]
+            # Map dependency indices to task IDs
+            task_deps = []
+            if str(i) in dependencies:
+                dep_indices = dependencies[str(i)]
+                task_deps = [task_ids[j] for j in dep_indices if j < len(task_ids)]
             
             subtask = SubTask(
                 id=task_id,
                 title=spec.get("title", f"Task {i+1}"),
                 description=spec.get("description", ""),
                 agent_type=spec.get("agent_type", "backend"),
-                dependencies=[],  # Will be set below
+                dependencies=task_deps,
                 status=TaskStatus.PENDING,
                 input_data={
                     "outputs": spec.get("outputs", []),
@@ -237,14 +242,6 @@ JSON ONLY."""
                 }
             )
             subtasks.append(subtask)
-        
-        # Fix dependencies - need to map indices to actual task IDs
-        # For simplicity, we'll assign sequential dependencies
-        # A production version would use the actual dependency mapping
-        for i, subtask in enumerate(subtasks):
-            if str(i) in dependencies:
-                dep_indices = dependencies[str(i)]
-                subtask.dependencies = [subtasks[j].id for j in dep_indices if j < len(subtasks)]
         
         graph = TaskGraph(
             id=str(uuid.uuid4()),
