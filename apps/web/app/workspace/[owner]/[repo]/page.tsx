@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect } from "react"
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels"
-import Editor from "@monaco-editor/react"
 import { TopBar } from "@/components/workspace/TopBar"
 import { SidebarRail } from "@/components/workspace/SidebarRail"
+import MonacoEditor from "@/components/editor/MonacoEditor"
 import { 
   ExplorerPanel, 
   GitPanel, 
@@ -124,25 +124,11 @@ export default function WorkspacePage({ params }: { params: { owner: string, rep
                           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-primary" />
                         </div>
                       )}
-                      <Editor
+                      <MonacoEditor
                         height="100%"
-                        path={currentFile || "welcome.ts"}
-                        defaultLanguage="typescript"
-                        theme="vs-dark"
+                        language="typescript"
                         value={fileContent || `// Welcome to OmniCode\n// Select a file to start editing`}
-                        options={{
-                          minimap: { enabled: false },
-                          fontSize: 13,
-                          fontFamily: "var(--font-mono)",
-                          lineNumbers: "on",
-                          roundedSelection: false,
-                          scrollBeyondLastLine: false,
-                          readOnly: false,
-                          padding: { top: 10 },
-                          cursorSmoothCaretAnimation: "on",
-                          smoothScrolling: true,
-                          automaticLayout: true,
-                        }}
+                        onChange={(value) => setFileContent(value)}
                       />
                     </div>
                   </div>
