@@ -16,9 +16,8 @@ import asyncio
 import json
 import os
 import uuid
+import time
 from datetime import datetime
-from typing import Optional, AsyncGenerator
-from github import Github
 
 from app.core.config import get_settings
 from app.core.security import security_manager
@@ -705,7 +704,11 @@ async def stream_activity(
         # Subscribe to Redis channels
         try:
             pubsub = redis_client.pubsub()
-            pubsub.subscribe(f"graph_updates_{graph_id}", f"agent_logs_{graph_id}")
+            pubsub.subscribe(
+                f"graph_updates_{graph_id}", 
+                f"agent_logs_{graph_id}",
+                f"agent_tokens_{graph_id}"
+            )
             
             while True:
                 message = pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
@@ -749,7 +752,7 @@ async def stream_agent_logs(
         
         try:
             pubsub = redis_client.pubsub()
-            pubsub.subscribe(f"agent_logs_{task_id}")
+            pubsub.subscribe(f"agent_logs_{task_id}", f"agent_tokens_{task_id}")
             
             while True:
                 message = pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
@@ -933,33 +936,40 @@ async def preview_orchestrator(data: dict):
 # Health & Info Endpoints
 # ============================================================================
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 async def health():
     """Health check endpoint."""
     db_ok = False
     redis_ok = False
+    db_latency = None
+    redis_latency = None
     
     # Check database
+    start_time = time.time()
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
             db_ok = True
+            db_latency = (time.time() - start_time) * 1000
     except Exception:
         pass
     
     # Check Redis
+    start_time = time.time()
     try:
-        if app.state.redis:
+        if hasattr(app.state, 'redis') and app.state.redis:
             app.state.redis.ping()
             redis_ok = True
+            redis_latency = (time.time() - start_time) * 1000
     except Exception:
         pass
     
     return {
         "status": "ok" if (db_ok and redis_ok) else "degraded",
-        "database": "connected" if db_ok else "disconnected",
+        "db": "connected" if db_ok else "disconnected",
         "redis": "connected" if redis_ok else "disconnected",
-        "version": "1.0.0"
+        "db_latency_ms": db_latency,
+        "redis_latency_ms": redis_latency
     }
 
 

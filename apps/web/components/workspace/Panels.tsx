@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { useEditor } from "@/context/EditorContext"
 import { useParams } from "next/navigation"
+import { LiveCodingView } from "@/components/LiveCodingView"
 
 export function ExplorerPanel() {
   const { owner, repo } = useParams()
@@ -78,16 +79,24 @@ export function GitPanel() {
 }
 
 export function TasksPanel() {
+  const { taskId } = useParams()
+  
   return (
     <div className="flex flex-col h-full bg-[#09090b]">
       <div className="h-9 px-4 flex items-center justify-between shrink-0">
         <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Agent Tasks</span>
       </div>
-      <ScrollArea className="flex-1">
-         <div className="p-4">
-           <span className="text-xs text-muted-foreground">Waiting for task...</span>
-        </div>
-      </ScrollArea>
+      <div className="flex-1 overflow-hidden">
+        {taskId ? (
+          <LiveCodingView taskId={taskId as string} />
+        ) : (
+          <ScrollArea className="h-full">
+            <div className="p-4">
+              <span className="text-xs text-muted-foreground">Waiting for task...</span>
+            </div>
+          </ScrollArea>
+        )}
+      </div>
     </div>
   )
 }

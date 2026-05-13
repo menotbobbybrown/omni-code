@@ -7,6 +7,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from ..schemas.orchestrator import TaskGraph, SubTask, TaskStatus
 from app.core.config import get_settings
+from app.utils.project_config import get_project_config
 
 logger = structlog.get_logger()
 settings = get_settings()
@@ -23,6 +24,12 @@ class TaskDecomposer:
     async def decompose(self, goal: str, context: Dict[str, Any] = None, db=None) -> TaskGraph:
         logger.info("decomposing_task", goal=goal)
         
+        # Read project config if available
+        project_config = {}
+        if context and "workspace_path" in context:
+            project_config = get_project_config(context["workspace_path"])
+            context["project_config"] = project_config
+
         system_msg = """You are the OmniCode Master Planner. 
 Decompose the user's goal into a logical TaskGraph of subtasks.
 Output valid JSON only with the following structure:
@@ -89,8 +96,8 @@ Output valid JSON only with the following structure:
             goal=goal,
             subtasks=subtasks,
             status=TaskStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.utcnow().isoformat(),
+            updated_at=datetime.utcnow().isoformat()
         )
 
     async def replan(self, original_graph: TaskGraph, failure_context: Dict[str, Any], db=None) -> TaskGraph:
