@@ -6,7 +6,6 @@ import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels"
 import { Sparkles, GitBranch, FileCode, Terminal, MessageSquare, ChevronDown, Menu, Clock, History, Settings, ChevronRight } from "lucide-react"
 import { Terminal as XTerm } from "xterm"
 import { FitAddon } from "xterm-addon-fit"
-import { SerializeHandles } from "xterm/lib/esm/Panel";
 import "xterm/css/xterm.css"
 
 import { TopBar } from "@/components/workspace/TopBar"

@@ -130,5 +130,19 @@ class BaseAgent(abc.ABC):
             except Exception as e:
                 logger.warning("failed_to_publish_log", task_id=task_id, error=str(e))
 
+    async def publish_token(self, task_id: str, token: str):
+        """Publish a single token for real-time streaming."""
+        if self.redis_client:
+            try:
+                channel = f"agent_tokens_{task_id}"
+                self.redis_client.publish(channel, json.dumps({
+                    "task_id": task_id,
+                    "token": token,
+                    "type": "token",
+                    "timestamp": time.time()
+                }))
+            except Exception:
+                pass
+
     def add_token_usage(self, tokens: int):
         self._tokens_used += tokens
