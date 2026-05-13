@@ -395,3 +395,69 @@ class OrchestratorEngine:
                 asyncio.create_task(self.run_graph(graph))
         except Exception as e:
             logger.error("recovery_failed", error=str(e))
+
+
+    async def inject_task(self, graph_id: str, new_task: SubTask) -> bool:
+            """
+            Dynamically inject a new task into a running graph.
+            
+            Args:
+                graph_id: Target graph ID
+                new_task: Task to inject
+                
+            Returns:
+                True if injection successful
+            """
+            if graph_id not in self.active_graphs:
+                return False
+                
+            graph = self.active_graphs[graph_id]
+            
+            # Add to local graph
+            graph.subtasks.append(new_task)
+            
+            # Persist to DB
+            if self.db:
+                db_subtask = SubTaskModel(
+                    id=new_task.id,
+                    graph_id=graph_id,
+                    title=new_task.title,
+                    description=new_task.description,
+                    agent_type=new_task.agent_type,
+                    model_id=new_task.model_id,
+                    status=new_task.status.value,
+                    dependencies=new_task.dependencies,
+                    input_data=new_task.input_data,
+                    max_retries=new_task.max_retries
+                )
+                self.db.add(db_subtask)
+                await self.db.commit()
+            
+            return True
+    
+        async def modify_graph(self, graph_id: str, modifications: Dict[str, Any]) -> bool:
+            """
+            Modify an existing graph (add dependencies, change task order, etc.).
+            
+            Args:
+                graph_id: Target graph ID
+                modifications: Dictionary of modifications
+                
+            Returns:
+                True if modification successful
+            """
+            if graph_id not in self.active_graphs:
+                return False
+                
+            graph = self.active_graphs[graph_id]
+            
+            for task_id, changes in modifications.get("task_updates", {}).items():
+                for task in graph.subtasks:
+                    if task.id == task_id:
+                        if "dependencies" in changes:
+                            task.dependencies = changes["dependencies"]
+                        if "input_data" in changes:
+                            task.input_data = changes["input_data"]
+                        break
+            
+            return True
