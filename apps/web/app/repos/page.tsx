@@ -31,7 +31,13 @@ async function fetchGitHubRepos(accessToken: string): Promise<GitHubRepo[]> {
   return response.json()
 }
 
-export default async function ReposPage() {
+export default async function ReposPage({
+  params: _params,
+  searchParams: _searchParams,
+}: {
+  params: { [key: string]: string | string[] | undefined };
+  searchParams: { [key: string]: string | string[] | undefined };
+}) {
   const session = await getServerSession(authOptions)
   
   if (!session?.accessToken) {

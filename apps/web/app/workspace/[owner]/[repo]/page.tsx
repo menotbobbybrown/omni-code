@@ -118,7 +118,13 @@ function WorkspaceContent({ params }: { params: { owner: string, repo: string } 
   )
 }
 
-export default function WorkspacePage({ params }: { params: { owner: string, repo: string } }) {
+export default function WorkspacePage({ 
+  params,
+  searchParams: _searchParams 
+}: { 
+  params: { owner: string, repo: string };
+  searchParams: { [key: string]: string | string[] | undefined };
+}) {
   return (
     <EditorProvider>
       <WorkspaceContent params={params} />

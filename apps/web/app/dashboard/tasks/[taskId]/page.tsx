@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,8 +11,13 @@ interface LogEntry {
   task_id: number;
 }
 
-export default function TaskDetailsPage() {
-  const params = useParams();
+export default function TaskDetailsPage({
+  params,
+  searchParams: _searchParams,
+}: {
+  params: { taskId: string };
+  searchParams: { [key: string]: string | string[] | undefined };
+}) {
   const taskId = params.taskId;
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [task, setTask] = useState<any>(null);

@@ -5,9 +5,15 @@ import TaskCard from '@/components/TaskCard';
 import BlockerResolutionModal from '@/components/BlockerResolutionModal';
 import { TaskCreationModal } from '@/components/TaskCreationModal';
 import { Button } from '@/components/ui/button';
-import { Plus, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
-export default function DashboardPage() {
+export default function DashboardPage({
+  params: _params,
+  searchParams: _searchParams,
+}: {
+  params: { [key: string]: string | string[] | undefined };
+  searchParams: { [key: string]: string | string[] | undefined };
+}) {
   const [tasks, setTasks] = useState<any[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
