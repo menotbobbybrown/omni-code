@@ -1,13 +1,11 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
 import { getGraph, streamGraphLogs } from '@/lib/api';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
 import { 
   Activity, 
   CheckCircle2, 
@@ -23,8 +21,14 @@ import {
 import { cn } from '@/lib/utils';
 import { TimelineView } from '@/components/TimelineView';
 
-export default function OrchestratorDashboard() {
-  const { graphId } = useParams();
+export default function OrchestratorDashboard({
+  params,
+  searchParams: _searchParams,
+}: {
+  params: { graphId: string };
+  searchParams: { [key: string]: string | string[] | undefined };
+}) {
+  const { graphId } = params;
   const [graph, setGraph] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

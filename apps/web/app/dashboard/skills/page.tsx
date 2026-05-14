@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge';
 import { Plus, Search, Layers, Puzzle, Info } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface Skill {
   id: number;
@@ -26,7 +26,8 @@ interface Skill {
 }
 
 interface SkillsPageProps {
-  workspaceId?: number;
+  params: { [key: string]: string | string[] | undefined };
+  searchParams: { [key: string]: string | string[] | undefined };
 }
 
 const DEFAULT_CATEGORIES = [
@@ -44,7 +45,9 @@ const DEFAULT_CATEGORIES = [
   'Performance',
 ];
 
-export default function SkillsPage({ workspaceId }: SkillsPageProps) {
+export default function SkillsPage({ searchParams }: SkillsPageProps) {
+  const workspaceIdParam = searchParams.workspaceId;
+  const workspaceId = workspaceIdParam ? Number(workspaceIdParam) : undefined;
   const [skills, setSkills] = useState<Skill[]>([]);
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [loading, setLoading] = useState(true);

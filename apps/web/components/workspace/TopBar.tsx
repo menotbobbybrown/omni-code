@@ -5,9 +5,7 @@ import {
   Play, 
   Settings, 
   Share2, 
-  MoreHorizontal, 
   Github, 
-  Terminal,
   Cpu
 } from "lucide-react"
 import { Button } from "@/components/ui/button"

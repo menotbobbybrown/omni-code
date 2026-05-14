@@ -1,10 +1,16 @@
-import { getServerSession } from "next-auth"
-import { signIn, signOut } from "next-auth/react"
-import { authOptions } from "@/lib/auth"
+"use client"
+
+import { useSession, signIn, signOut } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 
-export default async function HomePage() {
-  const session = await getServerSession(authOptions)
+export default function HomePage({
+  params: _params,
+  searchParams: _searchParams,
+}: {
+  params: { [key: string]: string | string[] | undefined };
+  searchParams: { [key: string]: string | string[] | undefined };
+}) {
+  const { data: session } = useSession()
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
@@ -29,9 +35,7 @@ export default async function HomePage() {
               </Button>
             </>
           ) : (
-            <a href="/api/auth/signin">
-              <Button size="lg">Sign in with GitHub</Button>
-            </a>
+            <Button size="lg" onClick={() => signIn("github")}>Sign in with GitHub</Button>
           )}
         </div>
         

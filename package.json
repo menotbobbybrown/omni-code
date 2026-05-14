@@ -11,10 +11,17 @@
     "dev": "turbo run dev",
     "start": "turbo run start",
     "lint": "turbo run lint",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+    "type-check": "turbo run type-check",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "prepare": "husky install"
   },
   "devDependencies": {
-    "turbo": "latest",
-    "prettier": "latest"
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.4",
+    "prettier": "^3.8.3",
+    "turbo": "latest"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": "prettier --write"
   }
 }

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react"
 import dynamic from "next/dynamic"
 import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels"
-import { Sparkles, GitBranch, FileCode, Terminal, MessageSquare, ChevronDown, Menu, Clock, History, Settings, ChevronRight } from "lucide-react"
+import { Sparkles, GitBranch, FileCode, Terminal } from "lucide-react"
 import { Terminal as XTerm } from "xterm"
 import { FitAddon } from "xterm-addon-fit"
 import "xterm/css/xterm.css"
@@ -44,13 +44,11 @@ interface ActivityItem {
 }
 
 interface OmniCodeWorkspaceProps {
-  params?: {
-    owner?: string
-    repo?: string
-  }
+  params: { [key: string]: string | string[] | undefined }
+  searchParams: { [key: string]: string | string[] | undefined }
 }
 
-export default function WorkspacePage({ params }: OmniCodeWorkspaceProps) {
+export default function WorkspacePage({ params: _params, searchParams }: OmniCodeWorkspaceProps) {
   const [activePanel, setActivePanel] = useState<"editor" | "terminal" | "chat">("editor")
   const [activeFile, setActiveFile] = useState<string | null>(null)
   const [fileTree, setFileTree] = useState<FileNode[]>([])
@@ -58,7 +56,6 @@ export default function WorkspacePage({ params }: OmniCodeWorkspaceProps) {
   const [isIndexing, setIsIndexing] = useState(false)
   const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [activityStream, setActivityStream] = useState<ActivityItem[]>([])
-  const [selectedTask, setSelectedTask] = useState<string | null>(null)
   const [terminalSessionId] = useState(() => `session_${Date.now()}`)
   
   const terminalRef = useRef<HTMLDivElement>(null)
@@ -66,8 +63,8 @@ export default function WorkspacePage({ params }: OmniCodeWorkspaceProps) {
   const wsRef = useRef<WebSocket | null>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
 
-  const owner = params?.owner || "example"
-  const repo = params?.repo || "project"
+  const owner = (searchParams?.owner as string) || "example"
+  const repo = (searchParams?.repo as string) || "project"
 
   // Initialize terminal
   useEffect(() => {
