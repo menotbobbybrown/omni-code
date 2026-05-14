@@ -1,12 +1,5 @@
 {
   "$schema": "https://railway.app/chart.schema.json",
-  "build": {
-    "builder": "NIXPACKS",
-    "options": {
-      "buildCommand": "pip install -r apps/api/requirements.txt",
-      "startCommand": "cd apps/api && uvicorn main:app --host 0.0.0.0 --port $PORT"
-    }
-  },
   "deploy": {
     "numReplicas": 2,
     "restartPolicyType": "ON_FAILURE",
