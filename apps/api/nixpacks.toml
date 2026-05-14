@@ -1,0 +1,12 @@
+[phases.setup]
+nixPkgs = ["python312", "nodejs_20", "gcc", "postgresql"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt"]
+
+[start]
+cmd = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+
+[variables]
+NIXPACKS_PATH = "/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games"
+PYTHONUNBUFFERED = "1"
