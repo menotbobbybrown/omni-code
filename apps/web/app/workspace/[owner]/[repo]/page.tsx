@@ -113,7 +113,13 @@ function WorkspaceContent({ params }: { params: { owner: string, repo: string } 
         </div>
       </div>
       
-      <CommandPalette />
+      <CommandPalette
+  onClose={() => setCommandPaletteOpen(false)}
+  onDecompose={(goal: string) => {
+    setCommandPaletteOpen(false)
+    handleSendMessage(goal)
+  }}
+/>
     </div>
   )
 }
