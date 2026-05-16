@@ -8,11 +8,6 @@ export const authOptions: NextAuthOptions = {
     GitHubProvider({
       clientId: process.env.GITHUB_CLIENT_ID!,
       clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          redirect_uri: "https://omni-code-production.up.railway.app/api/auth/callback/github"
-        }
-      }
     }),
   ],
   callbacks: {
